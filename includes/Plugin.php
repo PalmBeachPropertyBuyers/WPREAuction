@@ -54,9 +54,12 @@ class REAP_Plugin {
     }
 
     public function enqueue_admin_scripts($hook) {
-        if ($hook === 'real-estate-auction_page_reap_scraping') {
+        if ($hook === 'real-estate-auction_page_reap_scraping' || $hook === 'real-estate-auction_page_reap_sources') {
             wp_enqueue_script('reap-scraper', plugin_dir_url(__FILE__).'../js/reap-scraper.js', ['jquery'], null, true);
-            wp_localize_script('reap-scraper', 'REAP_AJAX', [
+        }
+        if ($hook === 'real-estate-auction_page_reap_sources') {
+            wp_enqueue_script('reap-sources', plugin_dir_url(__FILE__).'../js/reap-sources.js', ['jquery'], null, true);
+            wp_localize_script('reap-sources', 'REAP_AJAX', [
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('reap_scrape')
             ]);
@@ -82,7 +85,40 @@ class REAP_Plugin {
         echo '<div class="wrap"><h1>Auctions</h1><p>Auctions dashboard coming soon.</p></div>';
     }
     public function sources_page() {
-        echo '<div class="wrap"><h1>Sources</h1><p>Source manager coming soon.</p></div>';
+        global $wpdb;
+        $table = $wpdb->prefix . 'reap_sources';
+        $sources = $wpdb->get_results("SELECT * FROM $table ORDER BY id DESC");
+        echo '<div class="wrap"><h1>Source Manager</h1>';
+        echo '<button class="button" id="reap-add-source">Add Source</button> ';
+        echo '<button class="button" id="reap-import-defaults">Import All Default Sources</button>';
+        echo '<table class="widefat" style="margin-top:20px"><thead><tr><th>Name</th><th>URL</th><th>Enabled</th><th>Last Scraped</th><th>Actions</th></tr></thead><tbody>';
+        foreach ($sources as $src) {
+            echo '<tr data-id="'.$src->id.'">';
+            echo '<td>'.esc_html($src->name).'</td>';
+            echo '<td><a href="'.esc_url($src->url).'" target="_blank">'.esc_html($src->url).'</a></td>';
+            echo '<td><input type="checkbox" class="reap-toggle-source" '.($src->enabled?'checked':'').' /></td>';
+            echo '<td>'.esc_html($src->last_scraped).'</td>';
+            echo '<td>';
+            echo '<button class="button reap-edit-source">Edit</button> ';
+            echo '<button class="button reap-test-source">Test</button> ';
+            echo '<button class="button reap-delete-source">Delete</button>';
+            echo '</td></tr>';
+        }
+        echo '</tbody></table>';
+        // Modal for add/edit
+        echo '<div id="reap-source-modal" style="display:none;background:#fff;padding:20px;max-width:400px;border:1px solid #ccc;position:fixed;top:20%;left:50%;transform:translateX(-50%);z-index:9999;">
+            <h2 id="reap-modal-title">Add Source</h2>
+            <form id="reap-source-form">
+                <input type="hidden" name="id" value="">
+                <label>Name:<br><input type="text" name="name" style="width:100%"></label><br><br>
+                <label>URL:<br><input type="text" name="url" style="width:100%"></label><br><br>
+                <button class="button button-primary" type="submit">Save</button>
+                <button class="button" id="reap-cancel-modal" type="button">Cancel</button>
+            </form>
+        </div>';
+        echo '</div>';
+        // Enqueue JS
+        echo '<script src="'.plugin_dir_url(__FILE__).'../js/reap-sources.js"></script>';
     }
     public function settings_page() {
         echo '<div class="wrap"><h1>Settings</h1><p>Settings page coming soon.</p></div>';
@@ -120,5 +156,69 @@ class REAP_Plugin {
         }
         echo '</div>';
     }
+
+    // AJAX: Save source (add/edit)
+    public static function ajax_save_source() {
+        check_ajax_referer('reap_scrape', '_wpnonce');
+        global $wpdb;
+        $id = intval($_POST['id']);
+        $name = sanitize_text_field($_POST['name']);
+        $url = esc_url_raw($_POST['url']);
+        if ($id) {
+            $wpdb->update($wpdb->prefix.'reap_sources', ['name'=>$name,'url'=>$url], ['id'=>$id]);
+        } else {
+            $wpdb->insert($wpdb->prefix.'reap_sources', ['name'=>$name,'url'=>$url,'enabled'=>1]);
+        }
+        wp_send_json_success();
+    }
+    // AJAX: Delete source
+    public static function ajax_delete_source() {
+        check_ajax_referer('reap_scrape', '_wpnonce');
+        global $wpdb;
+        $id = intval($_POST['id']);
+        $wpdb->delete($wpdb->prefix.'reap_sources', ['id'=>$id]);
+        wp_send_json_success();
+    }
+    // AJAX: Toggle enable
+    public static function ajax_toggle_source() {
+        check_ajax_referer('reap_scrape', '_wpnonce');
+        global $wpdb;
+        $id = intval($_POST['id']);
+        $enabled = intval($_POST['enabled']);
+        $wpdb->update($wpdb->prefix.'reap_sources', ['enabled'=>$enabled], ['id'=>$id]);
+        wp_send_json_success();
+    }
+    // AJAX: Test source
+    public static function ajax_test_source() {
+        check_ajax_referer('reap_scrape', '_wpnonce');
+        global $wpdb;
+        $id = intval($_POST['id']);
+        $src = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}reap_sources WHERE id=%d", $id));
+        if (!$src) wp_send_json_error('Not found');
+        $resp = wp_remote_get($src->url);
+        if (is_wp_error($resp)) wp_send_json_error($resp->get_error_message());
+        $body = wp_remote_retrieve_body($resp);
+        wp_send_json_success('Fetched '.strlen($body).' bytes.');
+    }
+    // AJAX: Import defaults
+    public static function ajax_import_defaults() {
+        check_ajax_referer('reap_scrape', '_wpnonce');
+        global $wpdb;
+        $defaults = [
+            ['name'=>'Palm Beach Foreclosure','url'=>'https://palmbeach.realforeclose.com/index.cfm?zaction=AUCTION&ZCMD=list&AUCTIONDATE=all'],
+            ['name'=>'Broward Foreclosure','url'=>'https://broward.realforeclose.com/index.cfm?zaction=AUCTION&ZCMD=list&AUCTIONDATE=all'],
+            // ... add more counties as needed ...
+        ];
+        foreach ($defaults as $src) {
+            $exists = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$wpdb->prefix}reap_sources WHERE url=%s", $src['url']));
+            if (!$exists) $wpdb->insert($wpdb->prefix.'reap_sources', $src+['enabled'=>1]);
+        }
+        wp_send_json_success();
+    }
 }
 add_action('wp_ajax_reap_manual_scrape', ['REAP_Plugin', 'ajax_manual_scrape']);
+add_action('wp_ajax_reap_save_source', ['REAP_Plugin', 'ajax_save_source']);
+add_action('wp_ajax_reap_delete_source', ['REAP_Plugin', 'ajax_delete_source']);
+add_action('wp_ajax_reap_toggle_source', ['REAP_Plugin', 'ajax_toggle_source']);
+add_action('wp_ajax_reap_test_source', ['REAP_Plugin', 'ajax_test_source']);
+add_action('wp_ajax_reap_import_defaults', ['REAP_Plugin', 'ajax_import_defaults']);

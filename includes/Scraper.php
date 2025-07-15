@@ -30,14 +30,40 @@ class REAP_Scraper {
         $auctions = $this->parse_auctions($body);
         $this->log[] = "Parsed " . count($auctions) . " auctions.";
         foreach ($auctions as $auction) {
-            $post_id = wp_insert_post([
+            // Duplicate check by case_number
+            $existing = get_posts([
                 'post_type' => 'reap_auction',
-                'post_title' => $auction['case_number'] . ' - ' . $auction['address'],
-                'post_status' => 'publish',
-                'meta_input' => $auction
+                'meta_query' => [
+                    [
+                        'key' => 'case_number',
+                        'value' => $auction['case_number'],
+                        'compare' => '='
+                    ]
+                ],
+                'posts_per_page' => 1,
+                'fields' => 'ids'
             ]);
-            if ($post_id) {
-                $this->log[] = "Saved auction: {$auction['case_number']} ({$auction['address']})";
+            if ($existing) {
+                $post_id = $existing[0];
+                wp_update_post([
+                    'ID' => $post_id,
+                    'post_title' => $auction['case_number'] . ' - ' . $auction['address'],
+                    'post_status' => 'publish',
+                ]);
+                foreach ($auction as $k => $v) {
+                    update_post_meta($post_id, $k, $v);
+                }
+                $this->log[] = "Updated auction: {$auction['case_number']} ({$auction['address']})";
+            } else {
+                $post_id = wp_insert_post([
+                    'post_type' => 'reap_auction',
+                    'post_title' => $auction['case_number'] . ' - ' . $auction['address'],
+                    'post_status' => 'publish',
+                    'meta_input' => $auction
+                ]);
+                if ($post_id) {
+                    $this->log[] = "Created auction: {$auction['case_number']} ({$auction['address']})";
+                }
             }
         }
         if ($source_id) {

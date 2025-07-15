@@ -1,6 +1,13 @@
 <?php
 class REAP_Plugin {
     private static $instance = null;
+    private static $cron_event = 'reap_cron_scrape';
+    private static $intervals = [
+        'hourly' => 'Hourly',
+        'twicedaily' => 'Twice Daily',
+        'daily' => 'Daily',
+        'weekly' => 'Weekly',
+    ];
 
     public static function instance() {
         if (self::$instance === null) {
@@ -12,6 +19,9 @@ class REAP_Plugin {
     private function __construct() {
         add_action('init',        [$this, 'register_post_types']);
         add_action('admin_menu',  [$this, 'register_admin_menu']);
+        add_action(self::$cron_event, [self::class, 'cron_scrape_handler']);
+        register_activation_hook(dirname(__FILE__,2).'/real-estate-auction.php', [self::class, 'activate_cron']);
+        register_deactivation_hook(dirname(__FILE__,2).'/real-estate-auction.php', [self::class, 'deactivate_cron']);
     }
 
     public function register_post_types() {
@@ -121,7 +131,45 @@ class REAP_Plugin {
         echo '<script src="'.plugin_dir_url(__FILE__).'../js/reap-sources.js"></script>';
     }
     public function settings_page() {
-        echo '<div class="wrap"><h1>Settings</h1><p>Settings page coming soon.</p></div>';
+        $interval = get_option('reap_cron_interval', 'daily');
+        $last = get_option('reap_cron_last_run');
+        $next = wp_next_scheduled(self::$cron_event);
+        echo '<div class="wrap"><h1>Settings</h1>';
+        echo '<form method="post">';
+        echo '<label>Scraping Interval: <select name="reap_cron_interval">';
+        foreach (self::$intervals as $val => $label) {
+            echo '<option value="'.$val.'"'.selected($interval, $val, false).'>'.$label.'</option>';
+        }
+        echo '</select></label> ';
+        echo '<button class="button button-primary" type="submit">Save</button>';
+        echo '</form>';
+        if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['reap_cron_interval'])) {
+            update_option('reap_cron_interval', sanitize_text_field($_POST['reap_cron_interval']));
+            self::reschedule_cron();
+            echo '<div class="updated"><p>Settings saved.</p></div>';
+        }
+        echo '<p>Last run: '.($last ? esc_html($last) : 'Never').'</p>';
+        echo '<p>Next run: '.($next ? date('Y-m-d H:i:s', $next) : 'Not scheduled').'</p>';
+        echo '</div>';
+    }
+
+    public static function activate_cron() {
+        if (!wp_next_scheduled(self::$cron_event)) {
+            $interval = get_option('reap_cron_interval', 'daily');
+            wp_schedule_event(time(), $interval, self::$cron_event);
+        }
+    }
+    public static function deactivate_cron() {
+        wp_clear_scheduled_hook(self::$cron_event);
+    }
+    public static function reschedule_cron() {
+        self::deactivate_cron();
+        self::activate_cron();
+    }
+    public static function cron_scrape_handler() {
+        $scraper = new REAP_Scraper();
+        $scraper->scrape_all_sources();
+        update_option('reap_cron_last_run', current_time('mysql'));
     }
 
     public static function test_parser_page() {

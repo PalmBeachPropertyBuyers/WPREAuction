@@ -133,23 +133,33 @@ class REAP_Plugin {
         echo '<script src="'.plugin_dir_url(__FILE__).'../js/reap-sources.js"></script>';
     }
     public function settings_page() {
+        if (isset($_POST['reap_settings_submit']) && check_admin_referer('reap_settings_save', 'reap_settings_nonce')) {
+            update_option('reap_cron_interval', sanitize_text_field($_POST['reap_cron_interval']));
+            update_option('reap_gmaps_api_key', sanitize_text_field($_POST['reap_gmaps_api_key']));
+            // Placeholder for notifications
+            update_option('reap_notify_email', sanitize_email($_POST['reap_notify_email']));
+            self::reschedule_cron();
+            echo '<div class="updated"><p>Settings saved.</p></div>';
+        }
         $interval = get_option('reap_cron_interval', 'daily');
+        $gmaps = get_option('reap_gmaps_api_key', '');
+        $notify_email = get_option('reap_notify_email', get_option('admin_email'));
         $last = get_option('reap_cron_last_run');
         $next = wp_next_scheduled(self::$cron_event);
         echo '<div class="wrap"><h1>Settings</h1>';
         echo '<form method="post">';
-        echo '<label>Scraping Interval: <select name="reap_cron_interval">';
+        wp_nonce_field('reap_settings_save', 'reap_settings_nonce');
+        echo '<table class="form-table">';
+        echo '<tr><th>Scraping Interval</th><td><select name="reap_cron_interval">';
         foreach (self::$intervals as $val => $label) {
             echo '<option value="'.$val.'"'.selected($interval, $val, false).'>'.$label.'</option>';
         }
-        echo '</select></label> ';
-        echo '<button class="button button-primary" type="submit">Save</button>';
+        echo '</select></td></tr>';
+        echo '<tr><th>Google Maps API Key</th><td><input type="text" name="reap_gmaps_api_key" value="'.esc_attr($gmaps).'" style="width:300px"></td></tr>';
+        echo '<tr><th>Notification Email</th><td><input type="email" name="reap_notify_email" value="'.esc_attr($notify_email).'" style="width:300px"></td></tr>';
+        echo '</table>';
+        echo '<p><button class="button button-primary" type="submit" name="reap_settings_submit" value="1">Save Settings</button></p>';
         echo '</form>';
-        if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['reap_cron_interval'])) {
-            update_option('reap_cron_interval', sanitize_text_field($_POST['reap_cron_interval']));
-            self::reschedule_cron();
-            echo '<div class="updated"><p>Settings saved.</p></div>';
-        }
         echo '<p>Last run: '.($last ? esc_html($last) : 'Never').'</p>';
         echo '<p>Next run: '.($next ? date('Y-m-d H:i:s', $next) : 'Not scheduled').'</p>';
         echo '</div>';

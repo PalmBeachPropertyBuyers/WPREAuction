@@ -66,20 +66,47 @@ class REAP_Scraper {
         $doc = new DOMDocument();
         $doc->loadHTML($html);
         $xpath = new DOMXPath($doc);
-        // Example: Find rows in a table with class 'auctionTable'
-        $rows = $xpath->query("//table[contains(@class, 'auctionTable')]/tbody/tr");
-        foreach ($rows as $row) {
-            $cells = $row->getElementsByTagName('td');
-            if ($cells->length < 6) continue; // adjust as needed
+        // Find each auction item
+        $items = $xpath->query("//div[contains(@class, 'AUCTION_ITEM')]");
+        foreach ($items as $item) {
+            // Status, Date, Amount, Sold To
+            $status = $xpath->evaluate(".//div[contains(@class, 'ASTAT_MSGA')]/text()", $item)->item(0)?->nodeValue ?? '';
+            $auction_date = $xpath->evaluate(".//div[contains(@class, 'ASTAT_MSGB')]/text()", $item)->item(0)?->nodeValue ?? '';
+            $amount = $xpath->evaluate(".//div[contains(@class, 'ASTAT_MSGD')]/text()", $item)->item(0)?->nodeValue ?? '';
+            $sold_to = $xpath->evaluate(".//div[contains(@class, 'ASTAT_MSG_SOLDTO_MSG')]/text()", $item)->item(0)?->nodeValue ?? '';
+            // Table details
+            $case_number = $xpath->evaluate(".//tr[td[contains(text(),'Case')]]/td[2]//a/text()", $item)->item(0)?->nodeValue ?? '';
+            $auction_type = $xpath->evaluate(".//tr[td[contains(text(),'Auction Type')]]/td[2]/text()", $item)->item(0)?->nodeValue ?? '';
+            $final_judgment = $xpath->evaluate(".//tr[td[contains(text(),'Final Judgment')]]/td[2]/text()", $item)->item(0)?->nodeValue ?? '';
+            $parcel_id = $xpath->evaluate(".//tr[td[contains(text(),'Parcel ID')]]/td[2]//a/text()", $item)->item(0)?->nodeValue ?? '';
+            $address1 = $xpath->evaluate(".//tr[td[contains(text(),'Property Address')]]/td[2]/text()", $item)->item(0)?->nodeValue ?? '';
+            $address2 = $xpath->evaluate(".//tr[td[not(@scope) and not(@class) and not(text())]]/td[2]/text()", $item)->item(0)?->nodeValue ?? '';
+            $address = trim($address1 . ' ' . $address2);
+            $plaintiff_max_bid = $xpath->evaluate(".//tr[td[contains(text(),'Plaintiff Max Bid')]]/td[2]/text()", $item)->item(0)?->nodeValue ?? '';
             $auctions[] = [
-                'address' => trim($cells->item(0)->textContent),
-                'auction_date' => trim($cells->item(1)->textContent),
-                'opening_bid' => trim($cells->item(2)->textContent),
-                'case_number' => trim($cells->item(3)->textContent),
-                'sale_type' => trim($cells->item(4)->textContent),
-                'status' => trim($cells->item(5)->textContent),
+                'status' => trim($status),
+                'auction_date' => trim($auction_date),
+                'amount' => trim($amount),
+                'sold_to' => trim($sold_to),
+                'auction_type' => trim($auction_type),
+                'case_number' => trim($case_number),
+                'final_judgment' => trim($final_judgment),
+                'parcel_id' => trim($parcel_id),
+                'address' => trim($address),
+                'plaintiff_max_bid' => trim($plaintiff_max_bid),
             ];
         }
         return $auctions;
+    }
+
+    // Test function for sample HTML
+    public function test_parse_sample_html($html) {
+        $auctions = $this->parse_auctions($html);
+        foreach ($auctions as $auction) {
+            foreach ($auction as $k => $v) {
+                echo $k . ': ' . $v . "\n";
+            }
+            echo "---------------------\n";
+        }
     }
 }

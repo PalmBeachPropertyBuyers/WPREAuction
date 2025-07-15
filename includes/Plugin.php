@@ -48,6 +48,7 @@ class REAP_Plugin {
         add_submenu_page('reap_auctions', 'Sources', 'Sources', 'manage_options', 'reap_sources', [$this, 'sources_page']);
         add_submenu_page('reap_auctions', 'Settings', 'Settings', 'manage_options', 'reap_settings', [$this, 'settings_page']);
         add_submenu_page('reap_auctions', 'Manual Scraping', 'Manual Scraping', 'manage_options', 'reap_scraping', [$this, 'scraping_page']);
+        add_submenu_page('reap_auctions', 'Test Parser', 'Test Parser', 'manage_options', 'reap_test_parser', [self::class, 'test_parser_page']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
     }
 
@@ -84,6 +85,23 @@ class REAP_Plugin {
     }
     public function settings_page() {
         echo '<div class="wrap"><h1>Settings</h1><p>Settings page coming soon.</p></div>';
+    }
+
+    public static function test_parser_page() {
+        echo '<div class="wrap"><h1>Test Auction Parser</h1>';
+        echo '<form method="post">';
+        echo '<textarea name="reap_test_html" rows="15" style="width:100%">'.(isset($_POST['reap_test_html']) ? esc_textarea($_POST['reap_test_html']) : '').'</textarea><br>';
+        echo '<button class="button button-primary" type="submit">Parse HTML</button>';
+        echo '</form>';
+        if (!empty($_POST['reap_test_html'])) {
+            echo '<h2>Parsed Output</h2><pre>';
+            $scraper = new REAP_Scraper();
+            ob_start();
+            $scraper->test_parse_sample_html(stripslashes($_POST['reap_test_html']));
+            echo esc_html(ob_get_clean());
+            echo '</pre>';
+        }
+        echo '</div>';
     }
 }
 add_action('wp_ajax_reap_manual_scrape', ['REAP_Plugin', 'ajax_manual_scrape']);

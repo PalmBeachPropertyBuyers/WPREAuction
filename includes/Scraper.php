@@ -99,6 +99,45 @@ class REAP_Scraper {
         return $auctions;
     }
 
+    public function scrape_listing_page($url) {
+        $html = wp_remote_get($url);
+        if (is_wp_error($html)) {
+            $this->log[] = "Error fetching listing $url: " . $html->get_error_message();
+            $this->log_to_db('error', $html->get_error_message());
+            return false;
+        }
+        $body = wp_remote_retrieve_body($html);
+        $this->log[] = "Fetched listing page: " . strlen($body) . " bytes from $url.";
+        $this->log_to_db('info', "Fetched listing page: " . strlen($body) . " bytes from $url.");
+        // Parse for auction detail links
+        $detail_urls = $this->extract_auction_links($body, $url);
+        $this->log[] = "Found " . count($detail_urls) . " auction links.";
+        foreach ($detail_urls as $auction_url) {
+            $this->log[] = "Scraping auction: $auction_url";
+            $this->scrape_source($auction_url);
+            sleep($this->rate_limit);
+        }
+        return true;
+    }
+
+    private function extract_auction_links($html, $base_url) {
+        $links = [];
+        libxml_use_internal_errors(true);
+        $doc = new DOMDocument();
+        $doc->loadHTML($html);
+        $xpath = new DOMXPath($doc);
+        // Example: Find all links to auction detail pages (adjust selector as needed)
+        $a_tags = $xpath->query("//a[contains(@href, 'Auction/Details')]");
+        foreach ($a_tags as $a) {
+            $href = $a->getAttribute('href');
+            if (strpos($href, 'http') !== 0) {
+                $href = rtrim($base_url, '/') . '/' . ltrim($href, '/');
+            }
+            $links[] = $href;
+        }
+        return array_unique($links);
+    }
+
     // Test function for sample HTML
     public function test_parse_sample_html($html) {
         $auctions = $this->parse_auctions($html);

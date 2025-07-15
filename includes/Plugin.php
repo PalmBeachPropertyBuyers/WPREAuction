@@ -22,6 +22,7 @@ class REAP_Plugin {
         add_action(self::$cron_event, [self::class, 'cron_scrape_handler']);
         register_activation_hook(dirname(__FILE__,2).'/real-estate-auction.php', [self::class, 'activate_cron']);
         register_deactivation_hook(dirname(__FILE__,2).'/real-estate-auction.php', [self::class, 'deactivate_cron']);
+        add_action('add_meta_boxes', [self::class, 'add_auction_meta_box']);
     }
 
     public function register_post_types() {
@@ -60,6 +61,7 @@ class REAP_Plugin {
         add_submenu_page('reap_auctions', 'Manual Scraping', 'Manual Scraping', 'manage_options', 'reap_scraping', [$this, 'scraping_page']);
         add_submenu_page('reap_auctions', 'Bulk Scrape Test', 'Bulk Scrape Test', 'manage_options', 'reap_bulk_scrape', [self::class, 'bulk_scrape_page']);
         add_submenu_page('reap_auctions', 'Test Parser', 'Test Parser', 'manage_options', 'reap_test_parser', [self::class, 'test_parser_page']);
+        add_submenu_page('reap_auctions', 'View Log', 'View Log', 'manage_options', 'reap_log', [self::class, 'log_page']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
     }
 
@@ -203,6 +205,37 @@ class REAP_Plugin {
             echo '</pre>';
         }
         echo '</div>';
+    }
+
+    public static function log_page() {
+        global $wpdb;
+        $logs = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}reap_logs ORDER BY id DESC LIMIT 100");
+        echo '<div class="wrap"><h1>Scrape Log</h1>';
+        echo '<table class="widefat"><thead><tr><th>Type</th><th>Message</th><th>Date</th></tr></thead><tbody>';
+        foreach ($logs as $log) {
+            echo '<tr>';
+            echo '<td>'.esc_html($log->type).'</td>';
+            echo '<td style="white-space:pre-wrap">'.esc_html($log->message).'</td>';
+            echo '<td>'.esc_html($log->created_at).'</td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table>';
+        echo '</div>';
+    }
+
+    public static function add_auction_meta_box() {
+        add_meta_box('reap_auction_details', 'Auction Details', [self::class, 'auction_meta_box_cb'], 'reap_auction', 'normal', 'high');
+    }
+    public static function auction_meta_box_cb($post) {
+        $fields = [
+            'status','auction_date','amount','sold_to','auction_type','case_number','final_judgment','parcel_id','address','plaintiff_max_bid'
+        ];
+        echo '<table class="form-table">';
+        foreach ($fields as $field) {
+            $val = get_post_meta($post->ID, $field, true);
+            echo '<tr><th>'.ucwords(str_replace('_',' ',$field)).'</th><td><input type="text" style="width:100%" readonly value="'.esc_attr($val).'"></td></tr>';
+        }
+        echo '</table>';
     }
 
     // AJAX: Save source (add/edit)

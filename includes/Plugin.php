@@ -26,41 +26,24 @@ class REAP_Plugin {
     }
 
     public function register_post_types() {
-        // Auctions
+        // Only Auctions post type, no Properties or Leads
         register_post_type('reap_auction', [
             'label' => 'Auctions',
             'public' => false,
             'show_ui' => true,
             'supports' => ['title', 'custom-fields'],
             'menu_icon' => 'dashicons-hammer',
-        ]);
-        // Properties
-        register_post_type('reap_property', [
-            'label' => 'Properties',
-            'public' => false,
-            'show_ui' => true,
-            'supports' => ['title', 'custom-fields'],
-            'menu_icon' => 'dashicons-admin-home',
-        ]);
-        // Leads
-        register_post_type('reap_lead', [
-            'label' => 'Leads',
-            'public' => false,
-            'show_ui' => true,
-            'supports' => ['title', 'custom-fields'],
-            'menu_icon' => 'dashicons-businessman',
+            'show_in_menu' => false // Hide from sidebar, we add as submenu
         ]);
     }
 
     public function register_admin_menu() {
         add_menu_page('Auctions', 'Auctions', 'manage_options', 'reap_auctions', [$this, 'auctions_page'], 'dashicons-hammer');
-        add_submenu_page('reap_auctions', 'Properties', 'Properties', 'manage_options', 'edit.php?post_type=reap_property');
-        add_submenu_page('reap_auctions', 'Leads', 'Leads', 'manage_options', 'edit.php?post_type=reap_lead');
+        add_submenu_page('reap_auctions', 'All Auctions', 'All Auctions', 'manage_options', 'edit.php?post_type=reap_auction');
         add_submenu_page('reap_auctions', 'Sources', 'Sources', 'manage_options', 'reap_sources', [$this, 'sources_page']);
         add_submenu_page('reap_auctions', 'Settings', 'Settings', 'manage_options', 'reap_settings', [$this, 'settings_page']);
         add_submenu_page('reap_auctions', 'Manual Scraping', 'Manual Scraping', 'manage_options', 'reap_scraping', [$this, 'scraping_page']);
         add_submenu_page('reap_auctions', 'Bulk Scrape Test', 'Bulk Scrape Test', 'manage_options', 'reap_bulk_scrape', [self::class, 'bulk_scrape_page']);
-        add_submenu_page('reap_auctions', 'Test Parser', 'Test Parser', 'manage_options', 'reap_test_parser', [self::class, 'test_parser_page']);
         add_submenu_page('reap_auctions', 'View Log', 'View Log', 'manage_options', 'reap_log', [self::class, 'log_page']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
     }
@@ -136,14 +119,19 @@ class REAP_Plugin {
         if (isset($_POST['reap_settings_submit']) && check_admin_referer('reap_settings_save', 'reap_settings_nonce')) {
             update_option('reap_cron_interval', sanitize_text_field($_POST['reap_cron_interval']));
             update_option('reap_gmaps_api_key', sanitize_text_field($_POST['reap_gmaps_api_key']));
-            // Placeholder for notifications
             update_option('reap_notify_email', sanitize_email($_POST['reap_notify_email']));
+            update_option('reap_scrape_timeout', intval($_POST['reap_scrape_timeout']));
+            update_option('reap_scrape_max_retries', intval($_POST['reap_scrape_max_retries']));
+            update_option('reap_log_retention_days', intval($_POST['reap_log_retention_days']));
             self::reschedule_cron();
             echo '<div class="updated"><p>Settings saved.</p></div>';
         }
         $interval = get_option('reap_cron_interval', 'daily');
         $gmaps = get_option('reap_gmaps_api_key', '');
         $notify_email = get_option('reap_notify_email', get_option('admin_email'));
+        $timeout = get_option('reap_scrape_timeout', 15);
+        $max_retries = get_option('reap_scrape_max_retries', 3);
+        $log_retention = get_option('reap_log_retention_days', 30);
         $last = get_option('reap_cron_last_run');
         $next = wp_next_scheduled(self::$cron_event);
         echo '<div class="wrap"><h1>Settings</h1>';
@@ -157,6 +145,9 @@ class REAP_Plugin {
         echo '</select></td></tr>';
         echo '<tr><th>Google Maps API Key</th><td><input type="text" name="reap_gmaps_api_key" value="'.esc_attr($gmaps).'" style="width:300px"></td></tr>';
         echo '<tr><th>Notification Email</th><td><input type="email" name="reap_notify_email" value="'.esc_attr($notify_email).'" style="width:300px"></td></tr>';
+        echo '<tr><th>Scraping Timeout (seconds)</th><td><input type="number" name="reap_scrape_timeout" value="'.esc_attr($timeout).'" min="5" max="60"></td></tr>';
+        echo '<tr><th>Max Retries</th><td><input type="number" name="reap_scrape_max_retries" value="'.esc_attr($max_retries).'" min="0" max="10"></td></tr>';
+        echo '<tr><th>Log Retention (days)</th><td><input type="number" name="reap_log_retention_days" value="'.esc_attr($log_retention).'" min="1" max="365"></td></tr>';
         echo '</table>';
         echo '<p><button class="button button-primary" type="submit" name="reap_settings_submit" value="1">Save Settings</button></p>';
         echo '</form>';

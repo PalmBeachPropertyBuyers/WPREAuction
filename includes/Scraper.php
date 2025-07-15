@@ -24,11 +24,22 @@ class REAP_Scraper {
             return false;
         }
         $body = wp_remote_retrieve_body($html);
-        // TODO: Parse $body for auction data (address, date, bid, etc.)
-        // For now, just log length
         $this->log[] = "Fetched " . strlen($body) . " bytes from $url.";
         $this->log_to_db('info', "Fetched " . strlen($body) . " bytes from $url.");
-        // TODO: Save parsed data as posts
+        // Parse and save auctions
+        $auctions = $this->parse_auctions($body);
+        $this->log[] = "Parsed " . count($auctions) . " auctions.";
+        foreach ($auctions as $auction) {
+            $post_id = wp_insert_post([
+                'post_type' => 'reap_auction',
+                'post_title' => $auction['case_number'] . ' - ' . $auction['address'],
+                'post_status' => 'publish',
+                'meta_input' => $auction
+            ]);
+            if ($post_id) {
+                $this->log[] = "Saved auction: {$auction['case_number']} ({$auction['address']})";
+            }
+        }
         if ($source_id) {
             global $wpdb;
             $wpdb->update($wpdb->prefix.'reap_sources', ['last_scraped' => current_time('mysql')], ['id' => $source_id]);
@@ -47,5 +58,28 @@ class REAP_Scraper {
             'message' => $message,
             'created_at' => current_time('mysql')
         ]);
+    }
+
+    private function parse_auctions($html) {
+        $auctions = [];
+        libxml_use_internal_errors(true);
+        $doc = new DOMDocument();
+        $doc->loadHTML($html);
+        $xpath = new DOMXPath($doc);
+        // Example: Find rows in a table with class 'auctionTable'
+        $rows = $xpath->query("//table[contains(@class, 'auctionTable')]/tbody/tr");
+        foreach ($rows as $row) {
+            $cells = $row->getElementsByTagName('td');
+            if ($cells->length < 6) continue; // adjust as needed
+            $auctions[] = [
+                'address' => trim($cells->item(0)->textContent),
+                'auction_date' => trim($cells->item(1)->textContent),
+                'opening_bid' => trim($cells->item(2)->textContent),
+                'case_number' => trim($cells->item(3)->textContent),
+                'sale_type' => trim($cells->item(4)->textContent),
+                'status' => trim($cells->item(5)->textContent),
+            ];
+        }
+        return $auctions;
     }
 }

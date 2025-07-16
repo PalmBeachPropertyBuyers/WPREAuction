@@ -318,15 +318,68 @@ class REAP_Plugin {
         echo '<div class="wrap"><h1>ATTOM Property Search</h1>';
         echo '<form method="get">';
         echo '<input type="hidden" name="page" value="reap_attom_search">';
-        echo '<input type="text" name="address" placeholder="Address"> ';
-        echo '<input type="text" name="zip" placeholder="ZIP"> ';
-        echo '<input type="number" name="min_price" placeholder="Min Price"> ';
-        echo '<input type="number" name="max_price" placeholder="Max Price"> ';
-        echo '<input type="number" name="beds" placeholder="Beds"> ';
-        echo '<input type="number" name="baths" placeholder="Baths"> ';
+        echo '<input type="text" name="address" placeholder="Address" value="'.esc_attr($_GET['address'] ?? '').'"> ';
+        echo '<input type="text" name="zip" placeholder="ZIP" value="'.esc_attr($_GET['zip'] ?? '').'"> ';
+        echo '<input type="number" name="min_price" placeholder="Min Price" value="'.esc_attr($_GET['min_price'] ?? '').'"> ';
+        echo '<input type="number" name="max_price" placeholder="Max Price" value="'.esc_attr($_GET['max_price'] ?? '').'"> ';
+        echo '<input type="number" name="beds" placeholder="Beds" value="'.esc_attr($_GET['beds'] ?? '').'"> ';
+        echo '<input type="number" name="baths" placeholder="Baths" value="'.esc_attr($_GET['baths'] ?? '').'"> ';
         echo '<button class="button">Search</button>';
         echo '</form>';
-        // Results will be implemented next
+
+        $api_key = get_option('reap_attom_api_key','');
+        if ($api_key && (isset($_GET['address']) || isset($_GET['zip']))) {
+            $params = [];
+            if (!empty($_GET['address'])) $params['address'] = sanitize_text_field($_GET['address']);
+            if (!empty($_GET['zip'])) $params['postalcode'] = sanitize_text_field($_GET['zip']);
+            if (!empty($_GET['min_price'])) $params['minsaleamt'] = intval($_GET['min_price']);
+            if (!empty($_GET['max_price'])) $params['maxsaleamt'] = intval($_GET['max_price']);
+            if (!empty($_GET['beds'])) $params['beds'] = intval($_GET['beds']);
+            if (!empty($_GET['baths'])) $params['baths'] = intval($_GET['baths']);
+            $query = http_build_query($params);
+            $url = 'https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/detail?'.$query;
+            $response = wp_remote_get($url, [
+                'headers' => [
+                    'apikey' => $api_key
+                ]
+            ]);
+            if (is_wp_error($response)) {
+                echo '<div class="notice notice-error"><p>Error: '.esc_html($response->get_error_message()).'</p></div>';
+            } else {
+                $data = json_decode(wp_remote_retrieve_body($response), true);
+                if (!empty($data['property'])) {
+                    echo '<h2>Results</h2>';
+                    echo '<table class="widefat"><thead><tr><th>Address</th><th>City</th><th>State</th><th>ZIP</th><th>Beds</th><th>Baths</th><th>Price</th><th>Type</th></tr></thead><tbody>';
+                    foreach ($data['property'] as $prop) {
+                        $addr = $prop['address']['line1'] ?? '';
+                        $city = $prop['address']['locality'] ?? '';
+                        $state = $prop['address']['admin1'] ?? '';
+                        $zip = $prop['address']['postal1'] ?? '';
+                        $beds = $prop['building']['rooms']['beds'] ?? '';
+                        $baths = $prop['building']['rooms']['baths'] ?? '';
+                        $price = $prop['sale']['amount']['saleamt'] ?? '';
+                        $type = $prop['summary']['proptype'] ?? '';
+                        echo '<tr>';
+                        echo '<td>'.esc_html($addr).'</td>';
+                        echo '<td>'.esc_html($city).'</td>';
+                        echo '<td>'.esc_html($state).'</td>';
+                        echo '<td>'.esc_html($zip).'</td>';
+                        echo '<td>'.esc_html($beds).'</td>';
+                        echo '<td>'.esc_html($baths).'</td>';
+                        echo '<td>'.esc_html($price).'</td>';
+                        echo '<td>'.esc_html($type).'</td>';
+                        echo '</tr>';
+                    }
+                    echo '</tbody></table>';
+                } else {
+                    echo '<div class="notice notice-warning"><p>No results found.</p></div>';
+                }
+            }
+        } elseif ($api_key) {
+            echo '<p>Enter at least an address or ZIP to search ATTOM.</p>';
+        } else {
+            echo '<div class="notice notice-warning"><p>Please enter your ATTOM API key in the Auctions settings.</p></div>';
+        }
         echo '</div>';
     }
 }

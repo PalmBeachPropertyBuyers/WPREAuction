@@ -41,9 +41,9 @@ class REAP_Plugin {
         add_menu_page('Auctions', 'Auctions', 'manage_options', 'reap_auctions', [$this, 'auctions_page'], 'dashicons-hammer');
         add_submenu_page('reap_auctions', 'All Auctions', 'All Auctions', 'manage_options', 'edit.php?post_type=reap_auction');
         add_submenu_page('reap_auctions', 'Sources', 'Sources', 'manage_options', 'reap_sources', [$this, 'sources_page']);
-        add_submenu_page('reap_auctions', 'Manual Scraping', 'Manual Scraping', 'manage_options', 'reap_scraping', [$this, 'scraping_page']);
-        add_submenu_page('reap_auctions', 'Bulk Scrape Test', 'Bulk Scrape Test', 'manage_options', 'reap_bulk_scrape', [self::class, 'bulk_scrape_page']);
+        add_submenu_page('reap_auctions', 'Manual Scrape', 'Manual Scrape', 'manage_options', 'reap_scraping', [$this, 'scraping_page']);
         add_submenu_page('reap_auctions', 'View Log', 'View Log', 'manage_options', 'reap_log', [self::class, 'log_page']);
+        add_submenu_page('reap_auctions', 'ATTOM Search', 'ATTOM Search', 'manage_options', 'reap_attom_search', [self::class, 'attom_search_page']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_scripts']);
     }
 
@@ -124,6 +124,7 @@ class REAP_Plugin {
         echo '</select></td></tr>';
         echo '<tr><th>Google Maps API Key</th><td><input type="text" name="reap_gmaps_api_key" value="'.esc_attr($gmaps).'" style="width:300px"></td></tr>';
         echo '<tr><th>Notification Email</th><td><input type="email" name="reap_notify_email" value="'.esc_attr($notify_email).'" style="width:300px"></td></tr>';
+        echo '<tr><th>ATTOM API Key</th><td><input type="text" name="reap_attom_api_key" value="'.esc_attr(get_option('reap_attom_api_key','')).'" style="width:300px"></td></tr>';
         echo '<tr><th>Scraping Timeout (seconds)</th><td><input type="number" name="reap_scrape_timeout" value="'.esc_attr($timeout).'" min="5" max="60"></td></tr>';
         echo '<tr><th>Max Retries</th><td><input type="number" name="reap_scrape_max_retries" value="'.esc_attr($max_retries).'" min="0" max="10"></td></tr>';
         echo '<tr><th>Log Retention (days)</th><td><input type="number" name="reap_log_retention_days" value="'.esc_attr($log_retention).'" min="1" max="365"></td></tr>';
@@ -311,6 +312,22 @@ class REAP_Plugin {
             if (!$exists) $wpdb->insert($wpdb->prefix.'reap_sources', $src+['enabled'=>1]);
         }
         wp_send_json_success();
+    }
+
+    public static function attom_search_page() {
+        echo '<div class="wrap"><h1>ATTOM Property Search</h1>';
+        echo '<form method="get">';
+        echo '<input type="hidden" name="page" value="reap_attom_search">';
+        echo '<input type="text" name="address" placeholder="Address"> ';
+        echo '<input type="text" name="zip" placeholder="ZIP"> ';
+        echo '<input type="number" name="min_price" placeholder="Min Price"> ';
+        echo '<input type="number" name="max_price" placeholder="Max Price"> ';
+        echo '<input type="number" name="beds" placeholder="Beds"> ';
+        echo '<input type="number" name="baths" placeholder="Baths"> ';
+        echo '<button class="button">Search</button>';
+        echo '</form>';
+        // Results will be implemented next
+        echo '</div>';
     }
 }
 add_action('wp_ajax_reap_manual_scrape', ['REAP_Plugin', 'ajax_manual_scrape']);
